@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>💪 周公子 | 训练排课与身体功能评估一体化系统</title>
+  
+  <!-- Vue 3 + 导出依赖 CDNs -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --primary-light: #3b82f6;
+      --primary-bg: #eff6ff;
+      --red-accent: #ff2442;
+      --bg-body: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      --safe-bottom: env(safe-area-inset-bottom, 20px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); color: var(--text-main); padding-bottom: calc(80px + var(--safe-bottom)); line-height: 1.5; }
+
+    /* 顶部 Sticky Header */
+    header { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .brand h1 { font-size: 16px; font-weight: 700; color: var(--primary); }
+    .brand .sub { font-size: 11px; color: var(--text-muted); }
+
+    /* Tab 导航 */
+    .system-nav { display: flex; background: #e2e8f0; padding: 3px; border-radius: 10px; margin: 12px 16px; }
+    .nav-btn { flex: 1; padding: 8px; text-align: center; font-size: 13px; font-weight: 700; border: none; background: transparent; cursor: pointer; border-radius: 8px; color: var(--text-muted); transition: all 0.2s; }
+    .nav-btn.active { background: #fff; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+
+    .container { max-width: 720px; margin: 0 auto; padding: 0 14px; }
+    .card { background: var(--card-bg); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .card-title { font-size: 15px; font-weight: 700; color: var(--primary); border-left: 4px solid var(--primary-light); padding-left: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* 通用表单 */
+    .form-group { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 12px; font-weight: 600; color: #334155; }
+    .input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; background: #fafafa; }
+    .input:focus { border-color: var(--primary-light); background: #fff; }
+    .input.short { width: 140px; }
+    .input.number { width: 60px; text-align: center; padding: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+    /* Chips/单选多选 */
+    .chip-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .chip label { display: inline-block; padding: 5px 10px; font-size: 12px; border-radius: 16px; background: #f1f5f9; color: #475569; border: 1px solid var(--border); cursor: pointer; }
+    .chip input { display: none; }
+    .chip input:checked + span { font-weight: 700; }
+    .chip-label.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* 训练排课 Tab与卡片 */
+    .week-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; }
+    .week-btn { background: #f0f0f0; border: 1px solid #ddd; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; white-space: nowrap; cursor: pointer; }
+    .week-btn.active { background: var(--red-accent); color: #fff; border-color: var(--red-accent); }
+    .exercise-card { background: #fafafa; border: 1px solid #eaeaea; padding: 10px; border-radius: 8px; margin-bottom: 8px; }
+    .exercise-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .mode-box { background: #fff; padding: 8px; border-radius: 6px; border: 1px dashed #e0e0e0; font-size: 12px; }
+    .set-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12px; }
+
+    /* 动作库 Drawer 与库展示 */
+    .drawer-overlay { position: fixed; inset:0; background: rgba(0,0,0,0.4); z-index: 200; }
+    .drawer { position: fixed; top:0; right:-380px; width: 380px; height: 100vh; background: #fff; z-index: 201; transition: right 0.3s; display: flex; flex-direction: column; padding: 16px; }
+    .drawer.open { right: 0; }
+    .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+
+    /* 按钮样式 */
+    .btn { border: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: bold; }
+    .btn-red { background: var(--red-accent); color: #fff; }
+    .btn-green { background: #10b981; color: #fff; }
+    .btn-purple { background: #722ed1; color: #fff; }
+    .btn-dark { background: #333; color: #fff; }
+    .btn-secondary { background: #1890ff; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; padding: 3px 6px; font-size: 11px; }
+    .btn-small { background: #eee; border: 1px solid #ccc; padding: 2px 6px; font-size: 11px; border-radius: 4px; }
+    .btn-text { background: none; border: none; color: #ef4444; cursor: pointer; }
+
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 13px; z-index: 999; }
+
+    /* PDF 打印适配 */
+    @media print {
+      header, .system-nav, .week-tabs, .btn, .no-print, .drawer, .drawer-overlay { display: none !important; }
+      body { background: #fff; }
+      .container { max-width: 100%; padding:0; }
+      .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- 顶栏 -->
+  <header>
+    <div class="brand">
+      <h1>周公子 | 综合排课与评估系统 V3.0</h1>
+      <div class="sub">学员全周排课 · 康复体测评估16项 · 动作库集成</div>
+    </div>
+    <button @click="isDrawerOpen = true" class="btn btn-red">
+      👥 学员库档案 ({{ currentMember ? currentMember.name : '未选择' }})
+    </button>
+  </header>
+
+  <!-- 动态提示 Toast -->
+  <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
+
+  <!-- 主功能模块切换 Tabs -->
+  <div class="system-nav no-print">
+    <button :class="['nav-btn', { active: activeTab === 'plan' }]" @click="activeTab = 'plan'">🗓️ 全周排课与训练日志</button>
+    <button :class="['nav-btn', { active: activeTab === 'assess' }]" @click="activeTab = 'assess'">📋 身体功能评估 (完整16项)</button>
+    <button :class="['nav-btn', { active: activeTab === 'lib' }]" @click="activeTab = 'lib'">🏋️ 动作动作库</button>
+  </div>
+
+  <div class="container">
+    <!-- 顶栏：当前学员信息速览卡片 -->
+    <div class="card" style="background: #f0f7ff; border-color: #bedbfe;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin:0; font-size: 14px; color: var(--primary);">
+          👤 当前学员：<strong>{{ currentMember ? currentMember.name : '未选择' }}</strong>
+          <span v-if="currentMember" style="font-size: 12px; font-weight: normal; color: #555;">({{ currentMember.gender }} / {{ currentMember.age || '--' }}岁)</span>
+        </h3>
+        <button @click="isDrawerOpen = true" class="btn btn-small">切换 / 新建学员</button>
+      </div>
+      <div v-if="currentMember" style="font-size: 12px; color: #475569; margin-top: 6px; line-height: 1.5;">
+        <span>📞 电话：{{ currentMember.phone || '未填写' }}</span> | 
+        <span>🎯 目标：{{ currentMember.target || '常规提升' }}</span><br>
+        <span style="color: #d97706;">⚠️ 状况/备注：{{ currentMember.healthNote || '无特殊健康问题' }}</span>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 1: 全周自定义排课系统 ==================== -->
+    <div v-show="activeTab === 'plan'">
+      <div class="card">
+        <!-- 周几 Tab 切换 -->
+        <div class="week-tabs">
+          <button v-for="day in weekDays" :key="day.key" :class="['week-btn', { active: currentDayKey === day.key }]" @click="currentDayKey = day.key">
+            {{ day.label }}
+          </button>
+        </div>
+
+        <!-- 每日编辑区域 -->
+        <div style="border-top: 2px solid var(--red-accent); padding-top: 10px;">
+          <div class="form-group">
+            <label>🎯 {{ currentDayObj.label }} 训练主题：</label>
+            <input v-model="weeklyPlan[currentDayKey].focus" class="input" placeholder="如：背部厚度与宽度突破 + 体能" />
+          </div>
+
+          <div class="form-group">
+            <label>⚠️ 热身与注意事项：</label>
+            <input v-model="weeklyPlan[currentDayKey].warmup" class="input" placeholder="如：90-90呼吸，慢控离心" />
+          </div>
+
+          <!-- 动作列表 -->
+          <div style="margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h3 style="font-size:14px; color:#333;">🏋️ 训练动作列表</h3>
+              <button @click="openLibSelect" class="btn btn-small" style="background:#e0f2fe; color:#0369a1;">+ 从动作库快速导入</button>
+            </div>
+
+            <div v-for="(ex, index) in weeklyPlan[currentDayKey].exercises" :key="index" class="exercise-card">
+              <div class="exercise-header">
+                <input v-model="ex.name" placeholder="动作名称" class="input short" />
+                <label style="font-size: 12px; color: #666; cursor: pointer;">
+                  <input type="checkbox" v-model="ex.isFixedWeight" /> 固定重量模式
+                </label>
+                <button @click="removeExercise(index)" class="btn btn-danger">删除</button>
+              </div>
+
+              <!-- 固定重量模式 -->
+              <div v-if="ex.isFixedWeight" class="mode-box" style="display:flex; gap:6px; align-items:center;">
+                <span>重量:</span><input type="number" v-model.number="ex.fixedWeight" class="input number" />kg
+                <span>组数:</span><input type="number" v-model.number="ex.groupCount" class="input number" />组
+                <span>次数:</span><input type="number" v-model.number="ex.repsPerGroup" class="input number" />次
+              </div>
+
+              <!-- 递进组模式 -->
+              <div v-else class="mode-box">
+                <div v-for="(s, sIdx) in ex.sets" :key="sIdx" class="set-row">
+                  <span>第 {{ sIdx + 1 }} 组：</span>
+                  <input type="number" v-model.number="s.weight" class="input number" /> kg ×
+                  <input type="number" v-model.number="s.reps" class="input number" /> 次/力竭
+                  <button @click="removeSet(ex, sIdx)" class="btn-text">✕</button>
+                </div>
+                <button @click="addSet(ex)" class="btn-small">+ 增加一组</button>
+              </div>
+            </div>
+            <button @click="addExercise" class="btn btn-secondary" style="width:100%; margin-top:6px;">+ 新增自拟训练动作</button>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label>⚡️ 体能强化项目：</label>
+            <input v-model="weeklyPlan[currentDayKey].cardio" class="input" placeholder="如：甩绳、波比跳半程" />
+          </div>
+
+          <div class="form-group">
+            <label>🧘‍♂️ 课后拉伸与教练叮嘱：</label>
+            <input v-model="weeklyPlan[currentDayKey].coach" class="input" placeholder="如：重中之重拉伸！" />
+          </div>
+
+          <!-- 保存与打卡 -->
+          <div style="margin-top: 16px; background: #e6f7ff; border: 1px solid #91d5ff; padding: 12px; border-radius: 10px; text-align: center;">
+            <button @click="logTrainingSession" class="btn btn-green" style="width: 100%; font-size: 14px; padding: 10px;">
+              ✅ 提交并保存【{{ currentMember?.name }}】今日({{ currentDayObj.label }})训练打卡记录
+            </button>
+          </div>
+        </div>
+
+        <!-- 导出与文案复制 -->
+        <div class="no-print" style="margin-top: 15px; background: #fff7ed; border: 1px solid #ffedd5; padding: 12px; border-radius: 10px;">
+          <h4 style="font-size: 13px; color: #c2410c; margin-bottom: 8px;">📤 排课计划导出与小红书快捷文案</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button @click="exportWeekPDF" class="btn btn-purple">📄 打印全周 PDF 表</button>
+            <button @click="copyWeekXiaohongshu" class="btn btn-red">✨ 复制全周可爱文案</button>
+            <button @click="exportDayPDF" class="btn btn-dark">📄 打印当日 PDF</button>
+            <button @click="copyDayXiaohongshu" class="btn btn-green">📋 复制当日文案</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 历史打卡日志面板 -->
+      <div class="card no-print" v-if="currentMember">
+        <div class="card-title">
+          <span>📜 【{{ currentMember.name }}】历史训练日志 ({{ currentMemberLogs.length }}次)</span>
+          <button @click="showHistory = !showHistory" class="btn btn-small">{{ showHistory ? '收起' : '展开' }}</button>
+        </div>
+        <div v-if="showHistory">
+          <div v-if="currentMemberLogs.length === 0" style="text-align: center; color: #999; padding: 15px; font-size: 12px;">暂无打卡记录</div>
+          <div v-for="log in currentMemberLogs" :key="log.id" style="background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; color: #722ed1;">
+              <span>📅 {{ log.timestamp }} ({{ log.dayLabel }})</span>
+              <button @click="deleteLog(log.id)" class="btn-text">删除</button>
+            </div>
+            <div style="font-size: 12px; font-weight: bold; margin-top: 4px;">🎯 主题：{{ log.focus }}</div>
+            <div style="font-size: 11px; color: #666;">⚠️ 热身：{{ log.warmup }}</div>
+            <div v-for="(ex, idx) in log.exercises" :key="idx" style="font-size: 11px; border-top: 1px dashed #e5e7eb; padding-top: 2px; margin-top: 2px;">
+              <b>{{ ex.name }}</b>: 
+              <span v-if="ex.isFixedWeight">{{ ex.fixedWeight }}kg × {{ ex.groupCount }}组 ({{ ex.repsPerGroup }}次)</span>
+              <span v-else>{{ ex.sets.map(s => s.weight+'kg×'+s.reps+'次').join(' | ') }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: 康复体测项目 (完整 16 项) ==================== -->
+    <div v-show="activeTab === 'assess'">
+      <div class="card">
+        <!-- 1. 基础信息 -->
+        <div class="card-title">一、基础信息</div>
+        <div class="grid-3">
+          <div class="form-group"><label>身高 (cm)</label><input type="number" v-model.number="assessData.height" @input="calcBMI" class="input" /></div>
+          <div class="form-group"><label>体重 (kg)</label><input type="number" v-model.number="assessData.weight" @input="calcBMI" class="input" /></div>
+          <div class="form-group"><label>BMI</label><input v-model="assessData.bmi" readonly class="input" style="background:#eee;" /></div>
+        </div>
+        <div class="grid-3">
+          <div class="form-group"><label>体脂率 (%)</label><input v-model="assessData.bodyFat" class="input" /></div>
+          <div class="form-group"><label>骨骼肌 (kg)</label><input v-model="assessData.muscle" class="input" /></div>
+          <div class="form-group"><label>基础代谢</label><input v-model="assessData.bmr" class="input" /></div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group"><label>职业</label><input v-model="assessData.job" class="input" /></div>
+          <div class="form-group"><label>每日久坐时间</label><input v-model="assessData.sitTime" class="input" placeholder="小时" /></div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group"><label>平均睡眠</label><input v-model="assessData.sleep" class="input" placeholder="小时" /></div>
+          <div class="form-group"><label>运动频率</label><input v-model="assessData.freq" class="input" /></div>
+        </div>
+        <div class="form-group"><label>会员主诉</label><textarea v-model="assessData.mainComplaint" class="input" style="height:50px;"></textarea></div>
+
+        <!-- 2. 外观与体态观察 -->
+        <div class="card-title" style="margin-top:15px;">二、外观与体态观察</div>
+        <div class="form-group"><label>体型状态</label><input v-model="assessData.bodyType" class="input" placeholder="偏瘦/正常/偏胖/肌肉量较高" /></div>
+        <div class="form-group"><label>呼吸模式</label><input v-model="assessData.breathing" class="input" placeholder="腹式为主/胸式为主/混合/浅呼吸/节律异常" /></div>
+        <div class="form-group"><label>体态与形象观察记录</label><textarea v-model="assessData.postureNote" class="input" style="height:40px;"></textarea></div>
+
+        <!-- 3. 脊柱评估 -->
+        <div class="card-title" style="margin-top:15px;">三、脊柱评估</div>
+        <div class="grid-2">
+          <div class="form-group"><label>【正面】肩线与骨盆</label><input v-model="assessData.spineFront" class="input" placeholder="高低肩/骨盆倾斜表现" /></div>
+          <div class="form-group"><label>【侧面】头前伸与曲度</label><input v-model="assessData.spineSide" class="input" placeholder="头前伸/胸椎后凸/腰椎曲度" /></div>
+        </div>
+        <div class="form-group"><label>【背面】脊柱偏移与肩胛表现</label><input v-model="assessData.spineBack" class="input" placeholder="C型/S型偏移/肩胛翼状" /></div>
+
+        <!-- 4. 骨盆与髋关节 -->
+        <div class="card-title" style="margin-top:15px;">四、骨盆与髋关节</div>
+        <div class="grid-2">
+          <div class="form-group"><label>骨盆旋转/前后倾</label><input v-model="assessData.pelvisTilt" class="input" /></div>
+          <div class="form-group"><label>髋关节活动度 (左/右 °)</label><input v-model="assessData.hipROMS" class="input" placeholder="屈/伸/内外旋" /></div>
+        </div>
+
+        <!-- 5. 腿型与下肢排列 -->
+        <div class="card-title" style="margin-top:15px;">五、腿型与下肢排列</div>
+        <div class="grid-2">
+          <div class="form-group"><label>腿型排列 (左/右)</label><input v-model="assessData.legAlignment" class="input" placeholder="正常/X型腿/O型腿/膝过伸" /></div>
+          <div class="form-group"><label>动态深蹲观察</label><input v-model="assessData.squatObs" class="input" placeholder="膝内扣/重心偏移/足跟抬起" /></div>
+        </div>
+
+        <!-- 6. 足弓与足部功能 -->
+        <div class="card-title" style="margin-top:15px;">六、足弓与足部功能</div>
+        <div class="grid-2">
+          <div class="form-group"><label>足弓状态 (左/右)</label><input v-model="assessData.footArch" class="input" placeholder="正常/扁平足/高足弓" /></div>
+          <div class="form-group"><label>单脚闭眼站立 (秒 左/右)</label><input v-model="assessData.balanceTime" class="input" /></div>
+        </div>
+
+        <!-- 7. 肩胛与肩关节 -->
+        <div class="card-title" style="margin-top:15px;">七、肩胛与肩关节</div>
+        <div class="grid-2">
+          <div class="form-group"><label>肩关节活动度 (左/右 °)</label><input v-model="assessData.shoulderROM" class="input" placeholder="前屈/外展/内旋/外旋" /></div>
+          <div class="form-group"><label>双手上举代偿表现</label><input v-model="assessData.raiseComp" class="input" placeholder="耸肩/肋骨外翻/腰椎代偿" /></div>
+        </div>
+
+        <!-- 8. 颈椎与头部 -->
+        <div class="card-title" style="margin-top:15px;">八、颈椎与头部</div>
+        <div class="grid-2">
+          <div class="form-group"><label>颈部活动度 (旋转/侧屈 °)</label><input v-model="assessData.neckROM" class="input" /></div>
+          <div class="form-group"><label>日常不适症状</label><input v-model="assessData.neckSymptom" class="input" placeholder="肩颈酸痛/偏头痛/受限" /></div>
+        </div>
+
+        <!-- 9. 核心与躯干功能 -->
+        <div class="card-title" style="margin-top:15px;">九、核心与躯干功能</div>
+        <div class="grid-2">
+          <div class="form-group"><label>死虫/鸟狗测试</label><input v-model="assessData.coreControl" class="input" placeholder="稳定/骨盆晃动/代偿" /></div>
+          <div class="form-group"><label>平板支撑/侧桥 (秒)</label><input v-model="assessData.plankTime" class="input" /></div>
+        </div>
+
+        <!-- 10. 基础动作模式评估 -->
+        <div class="card-title" style="margin-top:15px;">十、基础动作模式评估</div>
+        <div class="form-group"><label>深蹲/髋铰链/弓步/推拉/步态</label><textarea v-model="assessData.movementPatterns" class="input" style="height:50px;" placeholder="记录各基础动作发力顺序与代偿..."></textarea></div>
+
+        <!-- 11. 力量与体能基础 -->
+        <div class="card-title" style="margin-top:15px;">十一、力量与体能基础</div>
+        <div class="grid-3">
+          <div class="form-group"><label>俯卧撑 (次)</label><input v-model="assessData.pushups" class="input" /></div>
+          <div class="form-group"><label>深蹲 (次)</label><input v-model="assessData.squatCount" class="input" /></div>
+          <div class="form-group"><label>引体 (次)</label><input v-model="assessData.pullups" class="input" /></div>
+        </div>
+
+        <!-- 12. 柔韧性与活动度 -->
+        <div class="card-title" style="margin-top:15px;">十二、柔韧性与活动度</div>
+        <div class="grid-2">
+          <div class="form-group"><label>踝背屈 / 胸椎旋转</label><input v-model="assessData.flexibility1" class="input" /></div>
+          <div class="form-group"><label>腘绳肌 / 髋屈肌张力</label><input v-model="assessData.flexibility2" class="input" /></div>
+        </div>
+
+        <!-- 13. 肌肉与软组织观察 -->
+        <div class="card-title" style="margin-top:15px;">十三、肌肉与软组织观察</div>
+        <div class="form-group"><label>触诊高张力区域与筋膜刀评估</label><textarea v-model="assessData.palpation" class="input" style="height:45px;" placeholder="如：斜方肌高张力、胸小肌紧张..."></textarea></div>
+
+        <!-- 14. 功能测试与干预复测 (核心重点) -->
+        <div style="background:#f0fdf4; border:2px solid #86efac; border-radius:10px; padding:12px; margin-top:15px;">
+          <div class="card-title" style="color:#166534; border-left-color:#22c55e;">十四、即刻功能测试与干预复测</div>
+          <div class="form-group"><label>会员问题主诉动作：</label><input v-model="assessData.testAction" class="input" placeholder="如：深蹲受限 / 举手肩痛" /></div>
+          <div class="form-group"><label>第一次测试表现：</label><input v-model="assessData.testFirst" class="input" placeholder="记录受限角度或痛点" /></div>
+          <div class="form-group"><label>现场松解/激活干预手段：</label><input v-model="assessData.testIntervention" class="input" placeholder="如：筋膜刀松解胸小肌 + 激活下斜方肌" /></div>
+          <div class="form-group"><label>复测动作变化结果：</label><input v-model="assessData.testRetest" class="input" placeholder="角度增加 / 疼痛消失 / 稳定性提升" /></div>
+        </div>
+
+        <!-- 15. 综合判断 -->
+        <div class="card-title" style="margin-top:15px;">十五、综合判断</div>
+        <div class="form-group"><label>主要限制因素与优先处理顺序</label><textarea v-model="assessData.limitOrder" class="input" style="height:45px;" placeholder="1. 呼吸模式  2. 骨盆中立..."></textarea></div>
+
+        <!-- 16. 阶段目标与教练决定 -->
+        <div class="card-title" style="margin-top:15px;">十六、阶段目标与教练决定</div>
+        <div class="grid-2">
+          <div class="form-group"><label>短期目标 (2-4周)</label><input v-model="assessData.goalShort" class="input" /></div>
+          <div class="form-group"><label>中期目标 (8-12周)</label><input v-model="assessData.goalMid" class="input" /></div>
+        </div>
+        <div class="form-group"><label>💡 教练最终指导决定：</label><textarea v-model="assessData.coachDecision" class="input" style="height:50px;" placeholder="当前最重要的不是盲目上重量，而是建立正确的骨盆中立与呼吸机制..."></textarea></div>
+
+        <!-- 保存评估按钮 -->
+        <div style="margin-top: 15px; display: flex; gap: 10px;" class="no-print">
+          <button @click="saveAssessment" class="btn btn-green" style="flex:1; padding: 10px;">💾 保存【{{ currentMember?.name }}】体测评估档案</button>
+          <button @click="exportAssessPDF" class="btn btn-purple">📄 导出评估报告 PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 3: 动作项目库 ==================== -->
+    <div v-show="activeTab === 'lib'">
+      <div class="card">
+        <div class="card-title">
+          <span>🏋️ 标准动作项目库 (可自定义扩展)</span>
+          <button @click="showAddLibModal = true" class="btn btn-small btn-red">+ 添加新动作</button>
+        </div>
+
+        <div v-for="(category, catName) in exerciseLibrary" :key="catName" style="margin-bottom: 12px;">
+          <h4 style="font-size: 13px; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 6px;">{{ catName }}</h4>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span v-for="(ex, i) in category" :key="i" style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 6px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+              {{ ex.name }} <span style="font-size:10px; color:#888;">({{ ex.defaultType }})</span>
+              <button @click="deleteLibExercise(catName, i)" class="btn-text" style="font-size:10px;">✕</button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧抽屉：学员库管理 -->
+  <div v-if="isDrawerOpen" class="drawer-overlay" @click="isDrawerOpen = false"></div>
+  <div :class="['drawer', { open: isDrawerOpen }]">
+    <div class="drawer-header">
+      <h3>👥 学员库与档案管理</h3>
+      <button @click="isDrawerOpen = false" class="btn-text" style="font-size: 18px;">✕</button>
+    </div>
+
+    <button @click="showAddMember = !showAddMember" class="btn btn-red" style="width: 100%; margin-bottom: 10px;">
+      {{ showAddMember ? '✕ 取消新增' : '➕ 新增学员档案' }}
+    </button>
+
+    <!-- 新增学员表单 -->
+    <div v-if="showAddMember" style="background: #fff5f5; border: 1px solid #ffd8d8; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+      <div class="form-group"><label>姓名 *</label><input v-model="newMember.name" class="input" /></div>
+      <div class="form-group"><label>电话</label><input v-model="newMember.phone" class="input" /></div>
+      <div class="grid-2">
+        <div class="form-group"><label>性别</label><select v-model="newMember.gender" class="input"><option>男</option><option>女</option></select></div>
+        <div class="form-group"><label>年龄</label><input v-model.number="newMember.age" type="number" class="input" /></div>
+      </div>
+      <div class="form-group"><label>训练目标</label><input v-model="newMember.target" class="input" /></div>
+      <div class="form-group"><label>身体备注</label><input v-model="newMember.healthNote" class="input" /></div>
+      <button @click="saveNewMember" class="btn btn-green" style="width:100%; margin-top:6px;">保存学员</button>
+    </div>
+
+    <input v-model="searchQuery" placeholder="🔍 搜索学员姓名或电话..." class="input" style="margin-bottom: 10px;" />
+
+    <div style="overflow-y: auto; flex: 1;">
+      <div v-for="m in filteredMembers" :key="m.id" @click="selectMember(m)" :style="{ background: currentMember?.id === m.id ? '#ffe8e8' : '#fafafa' }" style="border: 1px solid #eee; padding: 10px; border-radius: 6px; margin-bottom: 6px; cursor: pointer;">
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:13px;">
+          <span>{{ m.name }} ({{ m.gender }}/{{ m.age || '--' }}岁)</span>
+          <button @click.stop="deleteMember(m)" class="btn btn-danger">删除</button>
+        </div>
+        <div style="font-size: 11px; color: #666; margin-top:4px;">📞 {{ m.phone || '无电话' }} | 🎯 {{ m.target || '通用' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 动作库快速选择 Modal -->
+  <div v-if="showLibModal" class="drawer-overlay" @click="showLibModal = false"></div>
+  <div v-if="showLibModal" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; width:90%; max-width:480px; z-index:202; border-radius:12px; padding:16px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="font-size:15px; margin:0;">从动作库点击添加至今日训练</h3>
+      <button @click="showLibModal = false" class="btn-text">✕</button>
+    </div>
+    <div style="max-height:350px; overflow-y:auto;">
+      <div v-for="(category, catName) in exerciseLibrary" :key="catName" style="margin-bottom:10px;">
+        <div style="font-size:12px; font-weight:bold; color:var(--primary); margin-bottom:4px;">{{ catName }}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button v-for="(ex, i) in category" :key="i" @click="importLibExercise(ex)" class="btn btn-small" style="background:#f1f5f9;">
+            + {{ ex.name }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const { createApp, ref, computed, watch, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      const activeTab = ref('plan');
+      const isDrawerOpen = ref(false);
+      const showAddMember = ref(false);
+      const showHistory = ref(true);
+      const showLibModal = ref(false);
+      const showAddLibModal = ref(false);
+      const toastMessage = ref('');
+      const searchQuery = ref('');
+
+      const weekDays = [
+        { key: 'mon', label: '📅 周一' },
+        { key: 'tue', label: '📅 周二' },
+        { key: 'wed', label: '📅 周三' },
+        { key: 'thu', label: '📅 周四' },
+        { key: 'fri', label: '📅 周五' },
+        { key: 'sat', label: '📅 周六' }
+      ];
+      const currentDayKey = ref('mon');
+      const currentDayObj = computed(() => weekDays.find(d => d.key === currentDayKey.value));
+
+      // 学员库初始化
+      const defaultMembers = [
+        { id: 1, name: '周学员', phone: '13800001111', gender: '男', age: 28, target: '胸臂突破与减脂', healthNote: '无' },
+        { id: 2, name: '李女士', phone: '13922223333', gender: '女', age: 32, target: '肩颈康复/体能', healthNote: '肩袖轻微不适' }
+      ];
+      const members = ref(JSON.parse(localStorage.getItem('zg_members')) || defaultMembers);
+      const currentMember = ref(members.value[0] || null);
+
+      // 排课数据 (保留您所有的组数、重量、动作以及体能项目)
+      const defaultWeeklyPlan = {
+        mon: {
+          focus: '背部厚度与宽度突破 + 体能',
+          warmup: '90-90呼吸x3x120s，慢控避免借力！',
+          cardio: '波比跳半程x6 (1分钟/组)、甩绳x6、曲膝卷腹x6',
+          coach: '拉伸是重中之重！动作注意沉肩发力，周日预约康复~',
+          exercises: [
+            { name: '龙门引体向上', isFixedWeight: true, fixedWeight: 0, groupCount: 6, repsPerGroup: 15, sets: [] },
+            { name: '龙门俯卧下拉', isFixedWeight: false, sets: [{weight: 25, reps: 15}, {weight: 30, reps: 12}, {weight: 35, reps: 10}, {weight: 20, reps: 20}] },
+            { name: 'T杠铃划船', isFixedWeight: true, fixedWeight: 7.5, groupCount: 6, repsPerGroup: 12, sets: [] },
+            { name: '坐姿划船', isFixedWeight: false, sets: [{weight: 20, reps: 15}, {weight: 25, reps: 12}, {weight: 30, reps: 10}, {weight: 20, reps: 15}] }
+          ]
+        },
+        tue: {
+          focus: '胸肌全方位泵感',
+          warmup: '肩袖肌群热身充分，力竭组量力而行！',
+          cardio: 'T杠臀肩推胸x6、左右摔杠铃片x6、卷腹腿过壶铃x6',
+          coach: '推胸时核心收紧，课后做胸大肌专项静态拉伸！',
+          exercises: [
+            { name: '史密斯卧推', isFixedWeight: false, sets: [{weight: 0, reps: 15}, {weight: 5, reps: 12}, {weight: 7.5, reps: 10}] },
+            { name: '蝴蝶夹胸', isFixedWeight: false, sets: [{weight: 10, reps: 15}, {weight: 15, reps: 12}, {weight: 20, reps: 10}, {weight: 25, reps: 8}, {weight: 30, reps: 6}, {weight: 10, reps: 20}] },
+            { name: '坐姿推胸', isFixedWeight: false, sets: [{weight: 10, reps: 15}, {weight: 15, reps: 12}, {weight: 20, reps: 10}, {weight: 25, reps: 8}, {weight: 30, reps: 6}, {weight: 10, reps: 20}] }
+          ]
+        },
+        wed: {
+          focus: '下肢力量基础与臀腿线条',
+          warmup: '髋关节激活，慢控下蹲！',
+          cardio: '卷腹x6（核心稳定）',
+          coach: '练完腿必须拉伸大腿前侧与臀大肌！',
+          exercises: [
+            { name: '史密斯深蹲', isFixedWeight: false, sets: [{weight: 0, reps: 15}, {weight: 5, reps: 12}, {weight: 7.5, reps: 10}, {weight: 10, reps: 8}] },
+            { name: '倒蹬', isFixedWeight: false, sets: [{weight: 40, reps: 15}, {weight: 80, reps: 12}, {weight: 100, reps: 10}, {weight: 120, reps: 8}, {weight: 140, reps: 6}, {weight: 80, reps: 20}] },
+            { name: '保加利亚深蹲', isFixedWeight: true, fixedWeight: 0, groupCount: 6, repsPerGroup: 12, sets: [] },
+            { name: '坐姿屈伸腿', isFixedWeight: false, sets: [{weight: 40, reps: 15}, {weight: 45, reps: 12}, {weight: 50, reps: 10}, {weight: 60, reps: 8}] },
+            { name: '俯卧腿屈伸', isFixedWeight: true, fixedWeight: 40, groupCount: 4, repsPerGroup: 12, sets: [] },
+            { name: '哑铃屈髋练臀', isFixedWeight: true, fixedWeight: 20, groupCount: 5, repsPerGroup: 12, sets: [] }
+          ]
+        },
+        thu: {
+          focus: '三角肌+手臂线条塑造',
+          warmup: '肩关节周围肌群热身！',
+          cardio: '肩臂彻底静态拉伸',
+          coach: '手臂发力精准，组间保持充血感！',
+          exercises: [
+            { name: '史密斯推肩', isFixedWeight: false, sets: [{weight: 0, reps: 15}, {weight: 2.5, reps: 12}, {weight: 5, reps: 10}, {weight: 7.5, reps: 8}] },
+            { name: '坐姿抬肩', isFixedWeight: true, fixedWeight: 5, groupCount: 5, repsPerGroup: 15, sets: [] },
+            { name: '哑铃侧平举', isFixedWeight: true, fixedWeight: 5, groupCount: 5, repsPerGroup: 15, sets: [] },
+            { name: '躺平绳后拉', isFixedWeight: true, fixedWeight: 5, groupCount: 6, repsPerGroup: 15, sets: [] },
+            { name: '仰卧弯举', isFixedWeight: false, sets: [{weight: 10, reps: 12}, {weight: 15, reps: 10}, {weight: 20, reps: 8}, {weight: 25, reps: 6}, {weight: 30, reps: 4}, {weight: 35, reps: 2}, {weight: 15, reps: 15}] },
+            { name: '双臂屈伸', isFixedWeight: true, fixedWeight: 0, groupCount: 8, repsPerGroup: 15, sets: [] }
+          ]
+        },
+        fri: {
+          focus: '心肺耐力+全身爆发力',
+          warmup: '动态拉伸与高抬腿激活',
+          cardio: '体能6项：甩绳、壶铃深蹲跳、左右滑步、保加利亚深蹲、往返跑冲刺、波比跳、左右砸球（每组1分钟）',
+          coach: '体能日出汗量大，必须深度拉伸！',
+          exercises: [{ name: '体能全能6项大循环', isFixedWeight: true, fixedWeight: 0, groupCount: 6, repsPerGroup: 1, sets: [] }]
+        },
+        sat: {
+          focus: '体能循环 + 核心腹肌强化',
+          warmup: '90-90呼吸激活核心',
+          cardio: '体能6项：甩绳、波比跳半程、跳台阶、往返跑、左右砸球、跳台阶（每组1分钟）',
+          coach: '礼拜天记得预约找我做康复和筋膜松解！',
+          exercises: [{ name: '核心体能6项循环', isFixedWeight: true, fixedWeight: 0, groupCount: 6, repsPerGroup: 1, sets: [] }]
+        }
+      };
+      const weeklyPlan = ref(JSON.parse(JSON.stringify(defaultWeeklyPlan)));
+
+      // 动作库结构定义
+      const defaultLibrary = {
+        '背部动作': [{ name: '龙门引体向上', defaultType: '固定重量' }, { name: '龙门俯卧下拉', defaultType: '递进组' }, { name: 'T杠铃划船', defaultType: '固定重量' }, { name: '坐姿划船', defaultType: '递进组' }],
+        '胸部动作': [{ name: '史密斯卧推', defaultType: '递进组' }, { name: '蝴蝶夹胸', defaultType: '递进组' }, { name: '坐姿推胸', defaultType: '递进组' }],
+        '下肢动作': [{ name: '史密斯深蹲', defaultType: '递进组' }, { name: '倒蹬', defaultType: '递进组' }, { name: '保加利亚深蹲', defaultType: '固定重量' }, { name: '坐姿屈伸腿', defaultType: '递进组' }, { name: '俯卧腿屈伸', defaultType: '固定重量' }],
+        '肩臂与体能': [{ name: '史密斯推肩', defaultType: '递进组' }, { name: '哑铃侧平举', defaultType: '固定重量' }, { name: '仰卧弯举', defaultType: '递进组' }, { name: '体能6项循环', defaultType: '固定重量' }]
+      };
+      const exerciseLibrary = ref(JSON.parse(localStorage.getItem('zg_ex_lib')) || defaultLibrary);
+
+      // 康复评估表单数据 (16项完整定义)
+      const assessData = ref({
+        height: 170, weight: 65, bmi: '22.5', bodyFat: '', muscle: '', bmr: '', job: '', sitTime: '', sleep: '', freq: '', mainComplaint: '',
+        bodyType: '正常', breathing: '混合', postureNote: '',
+        spineFront: '', spineSide: '', spineBack: '',
+        pelvisTilt: '', hipROMS: '',
+        legAlignment: '', squatObs: '',
+        footArch: '', balanceTime: '',
+        shoulderROM: '', raiseComp: '',
+        neckROM: '', neckSymptom: '',
+        coreControl: '', plankTime: '',
+        movementPatterns: '',
+        pushups: '', squatCount: '', pullups: '',
+        flexibility1: '', flexibility2: '',
+        palpation: '',
+        testAction: '', testFirst: '', testIntervention: '', testRetest: '',
+        limitOrder: '',
+        goalShort: '', goalMid: '', coachDecision: ''
+      });
+
+      const trainingLogs = ref(JSON.parse(localStorage.getItem('zg_training_logs')) || []);
+
+      // 持久化保存
+      watch(members, (n) => localStorage.setItem('zg_members', JSON.stringify(n)), { deep: true });
+      watch(trainingLogs, (n) => localStorage.setItem('zg_training_logs', JSON.stringify(n)), { deep: true });
+      watch(exerciseLibrary, (n) => localStorage.setItem('zg_ex_lib', JSON.stringify(n)), { deep: true });
+
+      // 计算 BMI
+      const calcBMI = () => {
+        if (assessData.value.height && assessData.value.weight) {
+          const h = assessData.value.height / 100;
+          assessData.value.bmi = (assessData.value.weight / (h * h)).toFixed(1);
+        }
+      };
+
+      // 学员切换与管理
+      const newMember = ref({ name: '', phone: '', gender: '女', age: null, target: '', healthNote: '' });
+      const saveNewMember = () => {
+        if (!newMember.value.name) return showToast('请填写姓名！');
+        const m = { id: Date.now(), ...newMember.value };
+        members.value.unshift(m);
+        currentMember.value = m;
+        showAddMember.value = false;
+        isDrawerOpen.value = false;
+        showToast(`已成功添加学员：${m.name}`);
+      };
+      const deleteMember = (m) => {
+        if (confirm(`确定要删除学员【${m.name}】吗？`)) {
+          members.value = members.value.filter(item => item.id !== m.id);
+          if (currentMember.value?.id === m.id) currentMember.value = members.value[0] || null;
+        }
+      };
+      const selectMember = (m) => { currentMember.value = m; isDrawerOpen.value = false; };
+
+      const filteredMembers = computed(() => {
+        if (!searchQuery.value) return members.value;
+        return members.value.filter(m => m.name.includes(searchQuery.value) || (m.phone && m.phone.includes(searchQuery.value)));
+      });
+
+      // 训练动作增删
+      const addExercise = () => weeklyPlan.value[currentDayKey.value].exercises.push({ name: '自拟动作', isFixedWeight: true, fixedWeight: 10, groupCount: 4, repsPerGroup: 12, sets: [] });
+      const removeExercise = (i) => weeklyPlan.value[currentDayKey.value].exercises.splice(i, 1);
+      const addSet = (ex) => { if (!ex.sets) ex.sets = []; ex.sets.push({ weight: 10, reps: 10 }); };
+      const removeSet = (ex, i) => ex.sets.splice(i, 1);
+
+      // 动作库导入至当前排课
+      const openLibSelect = () => showLibModal.value = true;
+      const importLibExercise = (ex) => {
+        const isFixed = ex.defaultType === '固定重量';
+        weeklyPlan.value[currentDayKey.value].exercises.push({
+          name: ex.name,
+          isFixedWeight: isFixed,
+          fixedWeight: isFixed ? 10 : 0,
+          groupCount: 4,
+          repsPerGroup: 12,
+          sets: isFixed ? [] : [{ weight: 10, reps: 12 }, { weight: 15, reps: 10 }]
+        });
+        showLibModal.value = false;
+        showToast(`已添加【${ex.name}】到今日计划`);
+      };
+
+      // 保存训练打卡
+      const currentMemberLogs = computed(() => {
+        if (!currentMember.value) return [];
+        return trainingLogs.value.filter(l => l.memberId === currentMember.value.id);
+      });
+      const logTrainingSession = () => {
+        if (!currentMember.value) return showToast('请先选择学员！');
+        const now = new Date();
+        const log = {
+          id: Date.now(),
+          memberId: currentMember.value.id,
+          timestamp: `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`,
+          dayLabel: currentDayObj.value.label,
+          focus: weeklyPlan.value[currentDayKey.value].focus,
+          warmup: weeklyPlan.value[currentDayKey.value].warmup,
+          exercises: JSON.parse(JSON.stringify(weeklyPlan.value[currentDayKey.value].exercises))
+        };
+        trainingLogs.value.unshift(log);
+        showToast(`✅ 已保存【${currentMember.value.name}】打卡记录`);
+      };
+      const deleteLog = (id) => { trainingLogs.value = trainingLogs.value.filter(l => l.id !== id); };
+
+      // 保存与导出体测评估
+      const saveAssessment = () => {
+        if (!currentMember.value) return showToast('请先选择学员！');
+        localStorage.setItem(`zg_assess_${currentMember.value.id}`, JSON.stringify(assessData.value));
+        showToast(`✅ 成功保存【${currentMember.value.name}】16项体测评估档案`);
+      };
+
+      const exportAssessPDF = () => {
+        const el = document.createElement('div');
+        el.style.padding = '20px';
+        el.innerHTML = `
+          <h2 style="text-align:center; color:#1e3a8a;">身体功能全面评估报告 (16项)</h2>
+          <p style="text-align:center; font-size:12px;">学员：${currentMember.value?.name} | 教练：周公子</p>
+          <hr style="margin:10px 0;">
+          <p><b>一、基础信息：</b>身高${assessData.value.height}cm, 体重${assessData.value.weight}kg, BMI ${assessData.value.bmi}</p>
+          <p><b>二、体态与观察：</b>${assessData.value.postureNote || '正常'}</p>
+          <p><b>十四、即刻复测结果：</b>主诉: ${assessData.value.testAction} | 干预: ${assessData.value.testIntervention} | 复测: ${assessData.value.testRetest}</p>
+          <p><b>十六、教练建议：</b>${assessData.value.coachDecision}</p>
+        `;
+        html2pdf().set({ margin: 10, filename: `评估报告_${currentMember.value?.name}.pdf` }).from(el).save();
+      };
+
+      // PDF与小红书复制
+      const exportWeekPDF = () => window.print();
+      const exportDayPDF = () => window.print();
+
+      const copyWeekXiaohongshu = async () => {
+        let t = `✨🏷️ 周公子【全周定制训练排课表】\n👤 学员：${currentMember.value?.name}\n------------------\n`;
+        weekDays.forEach(d => {
+          const p = weeklyPlan.value[d.key];
+          t += `${d.label} | 主题: ${p.focus}\n`;
+          p.exercises.forEach(e => t += `  • ${e.name}\n`);
+        });
+        await navigator.clipboard.writeText(t);
+        showToast('✨ 已复制全周文案到剪贴板！');
+      };
+
+      const copyDayXiaohongshu = async () => {
+        const p = weeklyPlan.value[currentDayKey.value];
+        let t = `✨ 【${currentDayObj.value.label}·专属计划】\n🎯 主题：${p.focus}\n🏋️ 动作：\n`;
+        p.exercises.forEach((e, idx) => t += `${idx+1}. ${e.name}\n`);
+        await navigator.clipboard.writeText(t);
+        showToast('📋 已复制当日文案！');
+      };
+
+      const showToast = (msg) => { toastMessage.value = msg; setTimeout(() => toastMessage.value = '', 2000); };
+
+      return {
+        activeTab, isDrawerOpen, showAddMember, showHistory, showLibModal, showAddLibModal,
+        toastMessage, searchQuery, weekDays, currentDayKey, currentDayObj,
+        members, currentMember, newMember, filteredMembers, selectMember, saveNewMember, deleteMember,
+        weeklyPlan, addExercise, removeExercise, addSet, removeSet, openLibSelect, importLibExercise,
+        exerciseLibrary, assessData, calcBMI, saveAssessment, exportAssessPDF,
+        trainingLogs, currentMemberLogs, logTrainingSession, deleteLog,
+        exportWeekPDF, exportDayPDF, copyWeekXiaohongshu, copyDayXiaohongshu
+      };
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>
